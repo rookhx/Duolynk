@@ -1,0 +1,121 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isPrivileged() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    function isImageUpload() {
+      return request.resource != null &&
+        request.resource.size <= 8 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+    }
+
+    function conversation(conversationId) {
+      return firestore.get(/databases/(default)/documents/conversations/$(conversationId)).data;
+    }
+
+    function matchForConversation(conversationId) {
+      return firestore.get(/databases/(default)/documents/matches/$(conversation(conversationId).matchId)).data;
+    }
+
+    function hasConversationActivation(userId, pairKey) {
+      return firestore.exists(/databases/(default)/documents/users/$(userId)/conversationActivations/$(pairKey));
+    }
+
+    function hasProfileUnlock(viewerId, ownerId) {
+      return firestore.exists(/databases/(default)/documents/users/$(viewerId)/profileUnlocks/$(viewerId + "_" + ownerId)) ||
+        firestore.exists(/databases/(default)/documents/users/$(viewerId)/profileUnlocks/$(ownerId + "_" + viewerId));
+    }
+
+    function hasPremium(viewerId) {
+      return firestore.exists(/databases/(default)/documents/entitlements/$(viewerId)) &&
+        firestore.get(/databases/(default)/documents/entitlements/$(viewerId)).data.premiumActive == true;
+    }
+
+    function matchData(firstId, secondId) {
+      return firestore.exists(/databases/(default)/documents/matches/$(firstId + "_" + secondId)) ?
+        firestore.get(/databases/(default)/documents/matches/$(firstId + "_" + secondId)).data :
+        firestore.get(/databases/(default)/documents/matches/$(secondId + "_" + firstId)).data;
+    }
+
+    function hasPairRecord(firstId, secondId) {
+      return firestore.exists(/databases/(default)/documents/matches/$(firstId + "_" + secondId)) ||
+        firestore.exists(/databases/(default)/documents/matches/$(secondId + "_" + firstId));
+    }
+
+    function hasMutualProfileAccess(viewerId, ownerId) {
+      return hasPairRecord(viewerId, ownerId) &&
+        matchData(viewerId, ownerId).status in ['mutual', 'active'];
+    }
+
+    function hasPremiumCandidateAccess(viewerId, ownerId) {
+      return hasPremium(viewerId) &&
+        hasPairRecord(viewerId, ownerId) &&
+        viewerId in matchData(viewerId, ownerId).suggestedForUserIds &&
+        matchData(viewerId, ownerId).status in ['suggested', 'interested', 'mutual', 'active'];
+    }
+
+    function canReadOriginalProfilePhoto(ownerId) {
+      return isOwner(ownerId) ||
+        isPrivileged() ||
+        (
+          isSignedIn() &&
+          (
+            hasProfileUnlock(request.auth.uid, ownerId) ||
+            hasMutualProfileAccess(request.auth.uid, ownerId) ||
+            hasPremiumCandidateAccess(request.auth.uid, ownerId)
+          )
+        );
+    }
+
+    function hasActivatedConversation(conversationId) {
+      return hasConversationActivation(request.auth.uid, conversation(conversationId).pairKey) ||
+        matchForConversation(conversationId).status == 'active';
+    }
+
+    function isConversationMember(conversationId) {
+      return isSignedIn() &&
+        request.auth.uid in conversation(conversationId).memberIds;
+    }
+
+    match /users/{userId}/profile/{fileName} {
+      allow read: if canReadOriginalProfilePhoto(userId);
+      allow create, update: if isOwner(userId) && isImageUpload();
+      allow delete: if isOwner(userId);
+    }
+
+    match /profileTeasers/{userId}/{fileName} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isPrivileged();
+    }
+
+    match /conversations/{conversationId}/messages/{messageId}/{fileName} {
+      allow read: if isPrivileged() ||
+        (
+          isConversationMember(conversationId) &&
+          hasActivatedConversation(conversationId)
+        );
+      allow create: if isConversationMember(conversationId) &&
+        hasActivatedConversation(conversationId) &&
+        isImageUpload();
+      allow update, delete: if false;
+    }
+
+    match /verification/{userId}/{fileName} {
+      allow read, write: if isPrivileged();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

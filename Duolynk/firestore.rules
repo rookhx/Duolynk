@@ -1,0 +1,272 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isPrivileged() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    function isConversationMember(conversationId) {
+      return isSignedIn() &&
+        request.auth.uid in
+          get(/databases/$(database)/documents/conversations/$(conversationId)).data.memberIds;
+    }
+
+    function conversation(conversationId) {
+      return get(/databases/$(database)/documents/conversations/$(conversationId)).data;
+    }
+
+    function matchForConversation(conversationId) {
+      return get(/databases/$(database)/documents/matches/$(conversation(conversationId).matchId)).data;
+    }
+
+    function hasProfileUnlock(userId, pairKey) {
+      return exists(/databases/$(database)/documents/users/$(userId)/profileUnlocks/$(pairKey));
+    }
+
+    function hasConversationActivation(userId, pairKey) {
+      return exists(/databases/$(database)/documents/users/$(userId)/conversationActivations/$(pairKey));
+    }
+
+    function hasActivatedConversation(conversationId) {
+      return hasConversationActivation(request.auth.uid, conversation(conversationId).pairKey) ||
+        matchForConversation(conversationId).status == 'active';
+    }
+
+    function canUseDating(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId)) &&
+        get(/databases/$(database)/documents/users/$(userId)).data.moderationStatus == 'active';
+    }
+
+    function trustedUserFields() {
+      return [
+        'moderationStatus',
+        'verificationStatus',
+        'photoModerationStatuses',
+        'bioModerationStatus',
+        'promptModerationStatuses'
+      ];
+    }
+
+    function allowedOwnUserCreate() {
+      return request.resource.data.moderationStatus in [null, 'active'] &&
+        request.resource.data.verificationStatus in [null, 'unverified'] &&
+        !request.resource.data.keys().hasAny([
+          'moderationNotes',
+          'adminNotes',
+          'reportCount',
+          'trustedEntitlement'
+        ]);
+    }
+
+    function allowedOwnUserUpdate() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(trustedUserFields()) &&
+        !request.resource.data.keys().hasAny([
+          'moderationNotes',
+          'adminNotes',
+          'reportCount',
+          'trustedEntitlement'
+        ]);
+    }
+
+    function isMatchParticipant() {
+      return isSignedIn() && request.auth.uid in resource.data.participantIds;
+    }
+
+    function isConversationEligible(matchData) {
+      return matchData.status in ['mutual', 'active'];
+    }
+
+    function validClientMessage(conversationId) {
+      return request.resource.data.keys().hasOnly([
+          'chatId',
+          'senderId',
+          'text',
+          'type',
+          'createdAt',
+          'readByUserIds',
+          'imageUrl'
+        ]) &&
+        request.resource.data.chatId == conversationId &&
+        request.resource.data.senderId == request.auth.uid &&
+        request.resource.data.type in ['text', 'image'] &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() > 0 &&
+        request.resource.data.text.size() <= 2000 &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.readByUserIds == [request.auth.uid] &&
+        isConversationMember(conversationId) &&
+        isConversationEligible(matchForConversation(conversationId)) &&
+        hasActivatedConversation(conversationId) &&
+        canUseDating(request.auth.uid);
+    }
+
+    function validConversationMetadataUpdate() {
+      return isSignedIn() &&
+        request.auth.uid in resource.data.memberIds &&
+        request.resource.data.memberIds == resource.data.memberIds &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastMessage',
+          'lastMessageType',
+          'lastMessageAt',
+          'lastMessageSenderId',
+          'lastReadAtByUser',
+          'typingByUser',
+          'updatedAt'
+        ]) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastMessage']) ||
+          request.resource.data.lastMessage in [
+            '',
+            'New message',
+            'Photo'
+          ]) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastMessageSenderId']) ||
+          request.resource.data.lastMessageSenderId == request.auth.uid) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastMessageAt']) ||
+          request.resource.data.lastMessageAt == request.time) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['updatedAt']) ||
+          request.resource.data.updatedAt == request.time);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isPrivileged();
+      allow create: if isOwner(userId) && allowedOwnUserCreate();
+      allow update: if isOwner(userId) && allowedOwnUserUpdate();
+      allow delete: if false;
+
+      match /devices/{deviceId} {
+        allow read, create, update, delete: if isOwner(userId);
+      }
+
+      match /questionnaires/{questionnaireId} {
+        allow read, create, update: if isOwner(userId);
+        allow delete: if false;
+      }
+
+      match /subscriptions/{subscriptionId} {
+        allow read: if isOwner(userId) || isPrivileged();
+        allow write: if isPrivileged();
+      }
+
+      match /profileUnlocks/{unlockId} {
+        allow read: if isOwner(userId) || isPrivileged();
+        allow write: if isPrivileged();
+      }
+
+      match /conversationActivations/{activationId} {
+        allow read: if isOwner(userId) || isPrivileged();
+        allow write: if isPrivileged();
+      }
+
+      match /weeklyAccess/{weekKey} {
+        allow read: if isOwner(userId) || isPrivileged();
+        allow write: if isPrivileged();
+      }
+
+      match /settings/{settingId} {
+        allow read: if isOwner(userId) || isPrivileged();
+        allow create, update: if isOwner(userId) &&
+          settingId in ['notification_preferences', 'personalized_matching'];
+        allow delete: if false;
+      }
+
+      match /matchFeedback/{feedbackId} {
+        allow read, create: if isOwner(userId);
+        allow update, delete: if false;
+      }
+
+      match /blocks/{blockedUserId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) &&
+          request.resource.data.blockedUserId == blockedUserId;
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    match /publicProfiles/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isPrivileged();
+    }
+
+    match /protectedProfiles/{userId} {
+      allow read, write: if isPrivileged();
+    }
+
+    match /entitlements/{userId} {
+      allow read: if isOwner(userId) || isPrivileged();
+      allow write: if isPrivileged();
+    }
+
+    match /revenueCatEvents/{eventId} {
+      allow read, write: if isPrivileged();
+    }
+
+    match /auditLogs/{eventId} {
+      allow read, write: if isPrivileged();
+    }
+
+    match /matches/{matchId} {
+      allow read: if isPrivileged() || isMatchParticipant();
+      allow create, update, delete: if isPrivileged();
+    }
+
+    match /notification_jobs/{jobId} {
+      allow read: if isPrivileged() ||
+        (isSignedIn() && request.auth.uid == resource.data.userId);
+      allow create, update, delete: if isPrivileged();
+    }
+
+    match /moderation_reports/{reportId} {
+      allow read: if isPrivileged();
+      allow create: if isSignedIn() &&
+        request.resource.data.reporterUserId == request.auth.uid &&
+        request.resource.data.targetUserId is string &&
+        request.resource.data.targetUserId != request.auth.uid &&
+        request.resource.data.category in [
+          'fakeProfile',
+          'scam',
+          'harassment',
+          'sexualContent',
+          'hate',
+          'underageConcern',
+          'dangerousBehavior',
+          'spam',
+          'stolenPhotos',
+          'other'
+        ] &&
+        (!('details' in request.resource.data) ||
+          request.resource.data.details is string &&
+          request.resource.data.details.size() <= 500) &&
+        request.resource.data.status == 'submitted';
+      allow update, delete: if isPrivileged();
+    }
+
+    match /conversations/{conversationId} {
+      allow read: if isPrivileged() || isConversationMember(conversationId);
+      allow create: if isPrivileged();
+      allow update: if isPrivileged() || validConversationMetadataUpdate();
+      allow delete: if isPrivileged();
+
+      match /messages/{messageId} {
+        allow read: if isPrivileged() ||
+          (
+            isConversationMember(conversationId) &&
+            (
+              resource.data.senderId == request.auth.uid ||
+              hasActivatedConversation(conversationId)
+            )
+          );
+        allow create: if validClientMessage(conversationId);
+        allow update, delete: if false;
+      }
+    }
+  }
+}
