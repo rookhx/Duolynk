@@ -2,14 +2,17 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 final trustedAccessRepositoryProvider = Provider<TrustedAccessRepository>(
-  (ref) => TrustedAccessRepository(functions: FirebaseFunctions.instance),
+  (ref) => TrustedAccessRepository(),
 );
 
 class TrustedAccessRepository {
-  const TrustedAccessRepository({required FirebaseFunctions functions})
-    : _functions = functions;
+  TrustedAccessRepository({FirebaseFunctions? functions})
+    : _injectedFunctions = functions;
 
-  final FirebaseFunctions _functions;
+  // Resolved lazily so demo mode (no Firebase app) can build this repository.
+  final FirebaseFunctions? _injectedFunctions;
+  late final FirebaseFunctions _functions =
+      _injectedFunctions ?? FirebaseFunctions.instance;
 
   Future<TrustedAccessResult> unlockCandidateProfile({
     required String candidateUid,

@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../core/config/app_environment.dart';
+import '../../firebase_options.dart';
 
 class FirebaseBootstrapService {
   const FirebaseBootstrapService();
@@ -26,11 +27,10 @@ class FirebaseBootstrapService {
 
     final options = _firebaseOptions;
 
-    if (options != null) {
-      return Firebase.initializeApp(options: options);
-    }
-
-    return Firebase.initializeApp();
+    // --dart-define values override the checked-in config for the platform.
+    return Firebase.initializeApp(
+      options: options ?? DefaultFirebaseOptions.currentPlatform,
+    );
   }
 
   static FirebaseOptions? get _firebaseOptions {

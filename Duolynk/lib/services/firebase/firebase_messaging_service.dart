@@ -17,13 +17,19 @@ class FirebaseMessagingService {
   FirebaseMessagingService({
     FirebaseMessaging? messaging,
     FirestoreService? firestoreService,
-  }) : _messaging = messaging ?? FirebaseMessaging.instance,
+  }) : _injectedMessaging = messaging,
        _firestoreService = firestoreService ?? FirestoreService();
 
-  final FirebaseMessaging _messaging;
+  final FirebaseMessaging? _injectedMessaging;
+  late final FirebaseMessaging _messaging =
+      _injectedMessaging ?? FirebaseMessaging.instance;
   final FirestoreService _firestoreService;
 
   Future<void> initialize() async {
+    if (!AppEnvironment.firebaseEnabled) {
+      return;
+    }
+
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     await _messaging.setForegroundNotificationPresentationOptions(

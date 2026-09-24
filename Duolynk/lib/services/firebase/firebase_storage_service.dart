@@ -4,9 +4,11 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 class FirebaseStorageService {
   FirebaseStorageService({FirebaseStorage? storage})
-    : _storage = storage ?? FirebaseStorage.instance;
+    : _injectedStorage = storage;
 
-  final FirebaseStorage _storage;
+  final FirebaseStorage? _injectedStorage;
+  late final FirebaseStorage _storage =
+      _injectedStorage ?? FirebaseStorage.instance;
 
   Reference ref(String path) => _storage.ref().child(path);
 

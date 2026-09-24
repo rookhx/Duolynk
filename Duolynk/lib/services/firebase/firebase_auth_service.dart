@@ -8,21 +8,31 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../../core/config/app_environment.dart';
+import '../../core/demo/demo_store.dart';
 
 class FirebaseAuthService {
   FirebaseAuthService({FirebaseAuth? firebaseAuth, GoogleSignIn? googleSignIn})
-    : _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance,
-      _googleSignIn = googleSignIn ?? GoogleSignIn.instance;
+    : _injectedFirebaseAuth = firebaseAuth,
+      _injectedGoogleSignIn = googleSignIn;
 
-  final FirebaseAuth _firebaseAuth;
-  final GoogleSignIn _googleSignIn;
+  // Resolved lazily so constructing the service never touches Firebase in demo
+  // mode (FIREBASE_ENABLED=false), where no Firebase app is initialized.
+  final FirebaseAuth? _injectedFirebaseAuth;
+  final GoogleSignIn? _injectedGoogleSignIn;
+  late final FirebaseAuth _firebaseAuth =
+      _injectedFirebaseAuth ?? FirebaseAuth.instance;
+  late final GoogleSignIn _googleSignIn =
+      _injectedGoogleSignIn ?? GoogleSignIn.instance;
   bool _googleInitialized = false;
 
   Stream<User?> authStateChanges() => _firebaseAuth.authStateChanges();
 
-  User? get currentUser => _firebaseAuth.currentUser;
+  User? get currentUser =>
+      AppEnvironment.firebaseEnabled ? _firebaseAuth.currentUser : null;
 
-  String? get currentUserId => _firebaseAuth.currentUser?.uid;
+  String? get currentUserId => AppEnvironment.firebaseEnabled
+      ? _firebaseAuth.currentUser?.uid
+      : DemoStore.user.id;
 
   Future<UserCredential> signInWithEmailAndPassword({
     required String email,
