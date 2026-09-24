@@ -1,3 +1,4 @@
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
@@ -13,7 +14,25 @@ class FirebaseBootstrapService {
     }
 
     await ensureInitialized();
+    await _activateAppCheck();
     return true;
+  }
+
+  // Every callable Cloud Function sets enforceAppCheck: true, so calls without
+  // a valid App Check token are rejected. Debug builds use the debug provider:
+  // register the debug token it logs in Firebase Console > App Check.
+  static Future<void> _activateAppCheck() async {
+    if (kIsWeb) {
+      return;
+    }
+    await FirebaseAppCheck.instance.activate(
+      providerAndroid: kDebugMode
+          ? const AndroidDebugProvider()
+          : const AndroidPlayIntegrityProvider(),
+      providerApple: kDebugMode
+          ? const AppleDebugProvider()
+          : const AppleAppAttestWithDeviceCheckFallbackProvider(),
+    );
   }
 
   static Future<FirebaseApp?> ensureInitialized() async {

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/app_environment.dart';
@@ -182,26 +183,24 @@ class MatchingRepository {
           : const [];
     }
 
-    final legacySnapshot = await _firestoreService
+    // firestore.rules only let a user read matches listing them in
+    // participantIds, so the query must filter on that field; a query on
+    // userId or suggestedForUserIds is rejected outright.
+    final snapshot = await _firestoreService
         .collection(FirestorePaths.matches)
-        .where('userId', isEqualTo: userId)
+        .where('participantIds', arrayContains: userId)
         .where('weekKey', isEqualTo: weekKey)
         .where('generatedBySystem', isEqualTo: true)
         .get();
 
-    final canonicalSnapshot = await _firestoreService
-        .collection(FirestorePaths.matches)
-        .where('suggestedForUserIds', arrayContains: userId)
-        .where('weekKey', isEqualTo: weekKey)
-        .where('generatedBySystem', isEqualTo: true)
-        .get();
-
-    return {
-      for (final doc in legacySnapshot.docs)
-        doc.id: MatchModel.fromMap(doc.id, doc.data()),
-      for (final doc in canonicalSnapshot.docs)
-        doc.id: MatchModel.fromMap(doc.id, doc.data()),
-    }.values.toList();
+    return snapshot.docs
+        .map((doc) => MatchModel.fromMap(doc.id, doc.data()))
+        .where(
+          (match) =>
+              match.userId == userId ||
+              match.suggestedForUserIds.contains(userId),
+        )
+        .toList();
   }
 
   Future<bool> canCurrentUserReceiveNewIntroductions() async {
@@ -529,16 +528,15 @@ class MatchingRepository {
           match.status == MatchStatus.archived) {
         continue;
       }
-      final partner = await _fetchUser(match.partnerIdFor(userId));
-      if (partner == null) {
+      final profile = await _fetchAuthorizedPartnerProfile(
+        match.partnerIdFor(userId),
+      );
+      if (profile == null) {
         continue;
       }
-      final interests = await _readInterestSelections(partner.id);
-      final relationshipGoals = await _readStringAnswers(
-        partner.id,
-        QuestionnaireIds.relationshipGoals,
-        keys: const ['marriage', 'longTermRelationship', 'casualDating'],
-      );
+      final partner = profile.user;
+      final interests = profile.interests;
+      final relationshipGoals = profile.relationshipGoals;
       final hasProfileUnlock = await _hasProfileUnlock(
         userId: userId,
         pairKey: match.pairKey ?? match.id,
@@ -568,6 +566,46 @@ class MatchingRepository {
       return b.match.compatibilityScore.compareTo(a.match.compatibilityScore);
     });
     return suggestions;
+  }
+
+  /// Another user's `users` doc and questionnaires are owner-only in
+  /// firestore.rules, so the partner comes from getAuthorizedFullProfile:
+  /// the full profile when this user may see it, teaser fields otherwise.
+  Future<
+    ({
+      AppUser user,
+      List<String> interests,
+      Map<String, String> relationshipGoals,
+    })?
+  >
+  _fetchAuthorizedPartnerProfile(String partnerId) async {
+    final Map<String, dynamic> data;
+    try {
+      data = await _trustedAccessRepository.fetchAuthorizedFullProfile(
+        candidateUid: partnerId,
+      );
+    } catch (error) {
+      debugPrint('getAuthorizedFullProfile($partnerId) failed: $error');
+      return null;
+    }
+    final relationshipGoals = <String, String>{
+      for (final entry
+          in Map<String, dynamic>.from(
+            data['relationshipGoals'] as Map? ?? const {},
+          ).entries)
+        if (entry.value is String) entry.key: entry.value as String,
+    };
+    final interests = (data['interests'] as List<dynamic>? ?? const [])
+        .whereType<String>()
+        .toList();
+    final profileFields = Map<String, dynamic>.from(data)
+      ..remove('interests')
+      ..remove('relationshipGoals');
+    return (
+      user: AppUser.fromMap(partnerId, profileFields),
+      interests: interests,
+      relationshipGoals: relationshipGoals,
+    );
   }
 
   Future<bool> _hasProfileUnlock({

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/app_environment.dart';
@@ -139,6 +140,8 @@ class ProfileRepository {
       final storagePath = await _storageService.uploadData(
         path: path,
         data: images[index],
+        // storage.rules only accept uploads with an image/* content type.
+        metadata: SettableMetadata(contentType: 'image/jpeg'),
         returnDownloadUrl: false,
       );
       uploadedPaths.add(storagePath);
@@ -147,10 +150,9 @@ class ProfileRepository {
     await _firestoreService.setDocument(FirestorePaths.user(userId), {
       'photoUrl': uploadedPaths.isEmpty ? null : uploadedPaths.first,
       'photoUrls': uploadedPaths,
-      'photoModerationStatuses': {
-        for (final path in uploadedPaths)
-          path: PhotoModerationStatus.approved.name,
-      },
+      // photoModerationStatuses is trusted (server/admin-owned) per
+      // firestore.rules; clients must not write it. Missing entries are read
+      // as approved by AppUser.fromMap.
       'updatedAt': Timestamp.fromDate(DateTime.now()),
     });
     return uploadedPaths;

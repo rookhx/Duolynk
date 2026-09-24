@@ -90,10 +90,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         .read(authActionControllerProvider.notifier)
         .sendPasswordResetEmail(email: _emailController.text.trim());
 
-    final state = ref.read(authActionControllerProvider);
     if (!mounted) {
       return;
     }
+    final state = ref.read(authActionControllerProvider);
 
     if (state.hasError) {
       final error = state.error;

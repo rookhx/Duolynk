@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -235,7 +236,9 @@ class OnboardingController extends AsyncNotifier<OnboardingState> {
       );
       return true;
     } catch (error, stackTrace) {
-      state = AsyncError(error, stackTrace);
+      // Keep the filled-in form on screen; the caller shows a snackbar.
+      debugPrint('completeOnboarding failed: $error\n$stackTrace');
+      state = AsyncData(current.copyWith(isSubmitting: false));
       return false;
     }
   }
