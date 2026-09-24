@@ -250,7 +250,12 @@ service cloud.firestore {
     }
 
     match /conversations/{conversationId} {
-      allow read: if isPrivileged() || isConversationMember(conversationId);
+      allow get: if isPrivileged() || isConversationMember(conversationId);
+      // Queries can't be evaluated through get() of each result, so list
+      // checks membership on the document itself; clients must filter on
+      // memberIds array-contains their uid.
+      allow list: if isPrivileged() ||
+        (isSignedIn() && request.auth.uid in resource.data.memberIds);
       allow create: if isPrivileged();
       allow update: if isPrivileged() || validConversationMetadataUpdate();
       allow delete: if isPrivileged();

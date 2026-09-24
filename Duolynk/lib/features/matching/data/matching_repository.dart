@@ -107,21 +107,23 @@ class MatchingRepository {
       return const Stream<List<MatchModel>>.empty();
     }
 
-    return _firestoreService.collection(FirestorePaths.matches).snapshots().map(
-      (snapshot) {
-        return snapshot.docs
-            .map((doc) => MatchModel.fromMap(doc.id, doc.data()))
-            .where(
-              (match) =>
-                  (match.isLegacyActiveMatch &&
-                      match.userId == userId &&
-                      match.status == MatchStatus.active) ||
-                  (match.participantIds.contains(userId) &&
-                      match.isConversationEligible),
-            )
-            .toList();
-      },
-    );
+    // Rules only allow reading matches that list the user in participantIds.
+    return _firestoreService
+        .collection(FirestorePaths.matches)
+        .where('participantIds', arrayContains: userId)
+        .snapshots()
+        .map((snapshot) {
+          return snapshot.docs
+              .map((doc) => MatchModel.fromMap(doc.id, doc.data()))
+              .where(
+                (match) =>
+                    (match.isLegacyActiveMatch &&
+                        match.userId == userId &&
+                        match.status == MatchStatus.active) ||
+                    match.isConversationEligible,
+              )
+              .toList();
+        });
   }
 
   Stream<List<MatchModel>> watchSuggestedMatches() {
@@ -568,44 +570,17 @@ class MatchingRepository {
     return suggestions;
   }
 
-  /// Another user's `users` doc and questionnaires are owner-only in
-  /// firestore.rules, so the partner comes from getAuthorizedFullProfile:
-  /// the full profile when this user may see it, teaser fields otherwise.
-  Future<
-    ({
-      AppUser user,
-      List<String> interests,
-      Map<String, String> relationshipGoals,
-    })?
-  >
-  _fetchAuthorizedPartnerProfile(String partnerId) async {
-    final Map<String, dynamic> data;
+  Future<AuthorizedProfile?> _fetchAuthorizedPartnerProfile(
+    String partnerId,
+  ) async {
     try {
-      data = await _trustedAccessRepository.fetchAuthorizedFullProfile(
+      return await _trustedAccessRepository.fetchAuthorizedProfile(
         candidateUid: partnerId,
       );
     } catch (error) {
       debugPrint('getAuthorizedFullProfile($partnerId) failed: $error');
       return null;
     }
-    final relationshipGoals = <String, String>{
-      for (final entry
-          in Map<String, dynamic>.from(
-            data['relationshipGoals'] as Map? ?? const {},
-          ).entries)
-        if (entry.value is String) entry.key: entry.value as String,
-    };
-    final interests = (data['interests'] as List<dynamic>? ?? const [])
-        .whereType<String>()
-        .toList();
-    final profileFields = Map<String, dynamic>.from(data)
-      ..remove('interests')
-      ..remove('relationshipGoals');
-    return (
-      user: AppUser.fromMap(partnerId, profileFields),
-      interests: interests,
-      relationshipGoals: relationshipGoals,
-    );
   }
 
   Future<bool> _hasProfileUnlock({
