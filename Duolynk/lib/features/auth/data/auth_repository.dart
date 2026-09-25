@@ -176,6 +176,9 @@ class AuthRepository {
       photoUrl: photoUrl,
       photoUrls: photoUrl == null ? const [] : [photoUrl],
       isProfileComplete: false,
+      datingProfileComplete: false,
+      requiredCompatibilityComplete: false,
+      onboardingStep: '/onboarding',
     );
   }
 }

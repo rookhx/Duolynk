@@ -104,8 +104,8 @@ class MatchEligibilityService {
         MatchEligibilityRejectionCode.moderationRestricted,
       );
     }
-    if (!currentUser.user.isProfileComplete ||
-        !candidate.user.isProfileComplete) {
+    if (!currentUser.user.hasCompletedRequiredOnboarding ||
+        !candidate.user.hasCompletedRequiredOnboarding) {
       return const MatchEligibilityResult.rejected(
         MatchEligibilityRejectionCode.onboardingIncomplete,
       );

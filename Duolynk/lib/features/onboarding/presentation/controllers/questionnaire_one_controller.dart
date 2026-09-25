@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/config/compatibility_question_schema.dart';
+import '../../../../core/routing/app_route_paths.dart';
 import '../../../../services/analytics/analytics_event_service.dart';
 import '../../data/onboarding_repository.dart';
 import '../../domain/questionnaire_one_state.dart';
@@ -69,6 +70,9 @@ class QuestionnaireOneController extends AsyncNotifier<QuestionnaireOneState> {
             totalSteps: 1,
             isComplete: true,
           );
+      await ref
+          .read(onboardingRepositoryProvider)
+          .updateOnboardingStep(AppRoutePaths.questionnaireTwo);
       await const AnalyticsEventService().track(
         'compatibility_profile_started',
       );

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../core/routing/app_route_paths.dart';
 import '../../../../core/widgets/buttons/duo_button.dart';
 import '../../../../core/widgets/cards/duo_glass_card.dart';
 import '../../../../theme/app_colors.dart';
@@ -185,7 +187,7 @@ class QuestionnaireFiveScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: AppSpacing.xl),
                     DuoButton(
-                      label: 'Save Preferences',
+                      label: 'Complete Compatibility',
                       isLoading: questionnaire.isSaving,
                       onPressed: !questionnaire.isComplete
                           ? null
@@ -201,13 +203,7 @@ class QuestionnaireFiveScreen extends ConsumerWidget {
                                 questionnaireFiveControllerProvider,
                               );
                               if (context.mounted && !nextState.hasError) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Preferences and deal breakers saved to Firestore.',
-                                    ),
-                                  ),
-                                );
+                                context.go(AppRoutePaths.matching);
                               }
                             },
                     ),

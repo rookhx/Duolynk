@@ -9,6 +9,7 @@ import '../../../models/app_user.dart';
 import '../../../models/questionnaire_model.dart';
 import '../../../services/firebase/firebase_auth_service.dart';
 import '../../../services/firebase/firestore_service.dart';
+import '../../../services/matching/compatibility_profile_completion_service.dart';
 
 final onboardingRepositoryProvider = Provider<OnboardingRepository>(
   (ref) => OnboardingRepository(
@@ -147,6 +148,10 @@ class OnboardingRepository {
             : profile.photoUrl,
         isProfileComplete: profile.datingProfileVersion == 0
             ? profile.isProfileComplete
+            : profile.completionRatio >= 1 &&
+                  profile.requiredCompatibilityComplete,
+        datingProfileComplete: profile.datingProfileVersion == 0
+            ? profile.datingProfileComplete
             : profile.completionRatio >= 1,
         updatedAt: DateTime.now(),
       );
@@ -160,9 +165,60 @@ class OnboardingRepository {
           : profile.photoUrl,
       isProfileComplete: profile.datingProfileVersion == 0
           ? profile.isProfileComplete
+          : profile.completionRatio >= 1 &&
+                profile.requiredCompatibilityComplete,
+      datingProfileComplete: profile.datingProfileVersion == 0
+          ? profile.datingProfileComplete
           : profile.completionRatio >= 1,
       updatedAt: DateTime.now(),
     );
+
+    await _firestoreService.setDocument(
+      FirestorePaths.user(normalized.id),
+      normalized.toEditableMap(),
+    );
+    return normalized;
+  }
+
+  Future<void> updateOnboardingStep(String routePath) async {
+    if (!AppEnvironment.firebaseEnabled) {
+      DemoStore.saveUser(DemoStore.user.copyWith(onboardingStep: routePath));
+      return;
+    }
+
+    final userId = _authService.currentUserId;
+    if (userId == null) {
+      return;
+    }
+    await _firestoreService.setDocument(FirestorePaths.user(userId), {
+      'onboardingStep': routePath,
+      'updatedAt': DateTime.now(),
+    });
+  }
+
+  Future<AppUser> completeRequiredCompatibilityProfile() async {
+    final questionnaires = await fetchQuestionnaires();
+    final requiredComplete = const CompatibilityProfileCompletionService()
+        .hasCompletedRequiredProfile(questionnaires);
+    if (!requiredComplete) {
+      throw StateError('Complete all required compatibility questions first.');
+    }
+
+    final current = await fetchCurrentProfile();
+    if (current == null) {
+      throw StateError('A signed-in user profile is required.');
+    }
+    final normalized = current.copyWith(
+      requiredCompatibilityComplete: true,
+      isProfileComplete: current.datingProfileComplete,
+      onboardingStep: '/matching',
+      updatedAt: DateTime.now(),
+    );
+
+    if (!AppEnvironment.firebaseEnabled) {
+      DemoStore.saveUser(normalized);
+      return normalized;
+    }
 
     await _firestoreService.setDocument(
       FirestorePaths.user(normalized.id),

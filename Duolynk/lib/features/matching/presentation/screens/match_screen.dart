@@ -996,7 +996,7 @@ class _EmptyMatchView extends StatelessWidget {
           ),
           children: [
             Text(
-              'Your next meaningful introduction is still being prepared. Check back soon after the weekly generation cycle completes.',
+              'Duolynk looks for compatible people based on your preferences and compatibility profile. Your curated introductions will appear here when they are available.',
               style: Theme.of(
                 context,
               ).textTheme.bodyLarge?.copyWith(color: AppColors.textSecondary),
@@ -1012,8 +1012,29 @@ class _EmptyMatchView extends StatelessWidget {
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   Text(
-                    'No Match Yet',
+                    'Your next introductions are being prepared',
                     style: Theme.of(context).textTheme.headlineMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    'You can keep improving your compatibility profile or preview your dating profile while Duolynk searches.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  DuoButton(
+                    label: 'Improve Compatibility Profile',
+                    onPressed: () =>
+                        context.push(AppRoutePaths.compatibilityProfile),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  DuoButton(
+                    label: 'Preview Profile',
+                    variant: DuoButtonVariant.secondary,
+                    onPressed: () => context.push(AppRoutePaths.profilePreview),
                   ),
                 ],
               ),
@@ -1030,7 +1051,11 @@ class _MatchLoadingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    return const DuoPrimaryScaffold(
+      currentIndex: 0,
+      title: 'Curated Candidates',
+      body: Center(child: CircularProgressIndicator()),
+    );
   }
 }
 
@@ -1041,7 +1066,9 @@ class _MatchErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return DuoPrimaryScaffold(
+      currentIndex: 0,
+      title: 'Curated Candidates',
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.xl),
@@ -1050,13 +1077,13 @@ class _MatchErrorView extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'We could not load your weekly match.',
+                  "We couldn't load your introductions.",
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
                 const SizedBox(height: AppSpacing.md),
                 Text(
-                  'Pull to refresh or try again to request your latest compatibility result.',
+                  'This may be a network or backend issue. Try again, or use the navigation below to open Chats, Profile, or Settings.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: AppColors.textSecondary,

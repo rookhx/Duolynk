@@ -127,6 +127,9 @@ class QuestionnaireFiveController
       await const AnalyticsEventService().track(
         'compatibility_profile_completed',
       );
+      await ref
+          .read(onboardingRepositoryProvider)
+          .completeRequiredCompatibilityProfile();
 
       state = AsyncData(current.copyWith(isSaving: false));
     } catch (error, stackTrace) {

@@ -87,6 +87,9 @@ class ProfileRepository {
               : user.photoUrl,
           isProfileComplete: user.datingProfileVersion == 0
               ? user.isProfileComplete
+              : user.completionRatio >= 1 && user.requiredCompatibilityComplete,
+          datingProfileComplete: user.datingProfileVersion == 0
+              ? user.datingProfileComplete
               : user.completionRatio >= 1,
           updatedAt: DateTime.now(),
         ),
@@ -100,6 +103,9 @@ class ProfileRepository {
           : user.photoUrl,
       isProfileComplete: user.datingProfileVersion == 0
           ? user.isProfileComplete
+          : user.completionRatio >= 1 && user.requiredCompatibilityComplete,
+      datingProfileComplete: user.datingProfileVersion == 0
+          ? user.datingProfileComplete
           : user.completionRatio >= 1,
       updatedAt: DateTime.now(),
     );
@@ -394,6 +400,9 @@ class ProfileRepository {
           datingStatus: DatingStatus.active,
           clearDatingPausedAt: true,
           isProfileComplete: false,
+          datingProfileComplete: false,
+          requiredCompatibilityComplete: false,
+          clearOnboardingStep: true,
         ),
       );
       return;

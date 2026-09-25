@@ -107,7 +107,13 @@ class OnboardingState {
           ? resolvedPhotos.first
           : baseUser.photoUrl,
       photoUrls: resolvedPhotos,
-      isProfileComplete: completionRatio >= 1,
+      datingProfileComplete: completionRatio >= 1,
+      requiredCompatibilityComplete: baseUser.requiredCompatibilityComplete,
+      onboardingStep: completionRatio >= 1
+          ? '/onboarding/questionnaire-one'
+          : null,
+      isProfileComplete:
+          completionRatio >= 1 && baseUser.requiredCompatibilityComplete,
     );
   }
 

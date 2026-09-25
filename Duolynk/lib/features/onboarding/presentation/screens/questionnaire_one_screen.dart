@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../core/routing/app_route_paths.dart';
 import '../../../../core/widgets/buttons/duo_button.dart';
 import '../../../../core/widgets/cards/duo_glass_card.dart';
 import '../../../../theme/app_colors.dart';
@@ -108,7 +110,7 @@ class QuestionnaireOneScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: AppSpacing.xl),
                     DuoButton(
-                      label: 'Save Interests',
+                      label: 'Continue',
                       isLoading: questionnaire.isSaving,
                       onPressed: questionnaire.selectedInterests.isEmpty
                           ? null
@@ -123,13 +125,7 @@ class QuestionnaireOneScreen extends ConsumerWidget {
                                 questionnaireOneControllerProvider,
                               );
                               if (context.mounted && !nextState.hasError) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Interest selections saved to Firestore.',
-                                    ),
-                                  ),
-                                );
+                                context.go(AppRoutePaths.questionnaireTwo);
                               }
                             },
                     ),

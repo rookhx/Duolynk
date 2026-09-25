@@ -121,7 +121,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         Expanded(
                           child: DuoButton(
                             label: state.currentStep == state.totalSteps
-                                ? 'Complete Profile'
+                                ? 'Start Compatibility'
                                 : 'Continue',
                             onPressed: () =>
                                 _handlePrimaryAction(state.currentStep),
@@ -314,7 +314,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         return;
       }
       if (success) {
-        context.go(AppRoutePaths.matching);
+        context.go(AppRoutePaths.questionnaireOne);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -381,7 +381,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       case 6:
         return 'Choose three prompts that help your match understand who you are.';
       default:
-        return 'Take one last look before we start delivering more thoughtful matches.';
+        return 'Take one last look. Next, Duolynk will ask the compatibility questions that power your introductions.';
     }
   }
 }

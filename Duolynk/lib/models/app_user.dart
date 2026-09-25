@@ -40,6 +40,9 @@ class AppUser {
     this.bioModerationStatus = ProfileTextModerationStatus.approved,
     this.promptModerationStatuses = const {},
     this.isProfileComplete = false,
+    this.datingProfileComplete = true,
+    this.requiredCompatibilityComplete = true,
+    this.onboardingStep,
     this.notificationToken,
     this.latitude,
     this.longitude,
@@ -69,6 +72,9 @@ class AppUser {
   final ProfileTextModerationStatus bioModerationStatus;
   final Map<String, ProfileTextModerationStatus> promptModerationStatuses;
   final bool isProfileComplete;
+  final bool datingProfileComplete;
+  final bool requiredCompatibilityComplete;
+  final String? onboardingStep;
   final String? notificationToken;
   final double? latitude;
   final double? longitude;
@@ -113,9 +119,18 @@ class AppUser {
   bool get canUseDatingFeatures =>
       isAdult && moderationStatus == ModerationStatus.active;
 
+  bool get isLegacyCompletedProfile =>
+      datingProfileVersion == 0 && isProfileComplete;
+
+  bool get hasCompletedRequiredOnboarding =>
+      isLegacyCompletedProfile ||
+      (isProfileComplete &&
+          datingProfileComplete &&
+          requiredCompatibilityComplete);
+
   bool get canReceiveNewIntroductions =>
       datingStatus == DatingStatus.active &&
-      isProfileComplete &&
+      hasCompletedRequiredOnboarding &&
       canUseDatingFeatures;
 
   AppUser copyWith({
@@ -145,6 +160,10 @@ class AppUser {
     ProfileTextModerationStatus? bioModerationStatus,
     Map<String, ProfileTextModerationStatus>? promptModerationStatuses,
     bool? isProfileComplete,
+    bool? datingProfileComplete,
+    bool? requiredCompatibilityComplete,
+    String? onboardingStep,
+    bool clearOnboardingStep = false,
     String? notificationToken,
     double? latitude,
     bool clearLatitude = false,
@@ -180,6 +199,13 @@ class AppUser {
       promptModerationStatuses:
           promptModerationStatuses ?? this.promptModerationStatuses,
       isProfileComplete: isProfileComplete ?? this.isProfileComplete,
+      datingProfileComplete:
+          datingProfileComplete ?? this.datingProfileComplete,
+      requiredCompatibilityComplete:
+          requiredCompatibilityComplete ?? this.requiredCompatibilityComplete,
+      onboardingStep: clearOnboardingStep
+          ? null
+          : (onboardingStep ?? this.onboardingStep),
       notificationToken: notificationToken ?? this.notificationToken,
       latitude: clearLatitude ? null : (latitude ?? this.latitude),
       longitude: clearLongitude ? null : (longitude ?? this.longitude),
@@ -219,6 +245,9 @@ class AppUser {
         (promptId, status) => MapEntry(promptId, status.name),
       ),
       'isProfileComplete': isProfileComplete,
+      'datingProfileComplete': datingProfileComplete,
+      'requiredCompatibilityComplete': requiredCompatibilityComplete,
+      'onboardingStep': onboardingStep,
       'notificationToken': notificationToken,
       if (latitude != null) 'latitude': latitude,
       if (longitude != null) 'longitude': longitude,
@@ -400,6 +429,17 @@ class AppUser {
         ProfileTextModerationStatus.approved,
       ),
       isProfileComplete: map['isProfileComplete'] as bool? ?? false,
+      datingProfileComplete:
+          map['datingProfileComplete'] as bool? ??
+          (map['datingProfileVersion'] == 0
+              ? (map['isProfileComplete'] as bool? ?? false)
+              : false),
+      requiredCompatibilityComplete:
+          map['requiredCompatibilityComplete'] as bool? ??
+          (map['datingProfileVersion'] == 0
+              ? (map['isProfileComplete'] as bool? ?? false)
+              : false),
+      onboardingStep: map['onboardingStep'] as String?,
       notificationToken: map['notificationToken'] as String?,
       latitude: coordinates.latitude,
       longitude: coordinates.longitude,

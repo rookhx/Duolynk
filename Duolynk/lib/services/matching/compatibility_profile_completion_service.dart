@@ -29,6 +29,18 @@ class CompatibilityProfileCompletionService {
     return ((requiredScore * 0.80) + (optionalScore * 0.20)).clamp(0, 1);
   }
 
+  bool hasCompletedRequiredProfile(
+    Iterable<QuestionnaireModel> questionnaires,
+  ) {
+    final byId = {
+      for (final questionnaire in questionnaires)
+        questionnaire.id: questionnaire,
+    };
+    return CompatibilityQuestionSchema.requiredQuestions.every(
+      (definition) => _hasAnswer(byId, definition.key),
+    );
+  }
+
   bool _hasAnswer(
     Map<String, QuestionnaireModel> questionnairesById,
     String key,

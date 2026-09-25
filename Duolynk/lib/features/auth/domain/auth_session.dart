@@ -7,5 +7,5 @@ class AuthSession {
   final bool isAuthenticated;
 
   bool get needsOnboarding =>
-      isAuthenticated && !(user?.isProfileComplete ?? false);
+      isAuthenticated && !(user?.hasCompletedRequiredOnboarding ?? false);
 }

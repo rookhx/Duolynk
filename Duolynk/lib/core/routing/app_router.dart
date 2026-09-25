@@ -36,6 +36,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final session = authSession.valueOrNull;
       final isAuthenticated = session?.isAuthenticated ?? false;
       final needsOnboarding = session?.needsOnboarding ?? false;
+      final onboardingTarget = _onboardingTargetFor(session?.user);
 
       if (!isAuthenticated) {
         return isAuthRoute ? null : AppRoutePaths.login;
@@ -47,8 +48,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             : AppRoutePaths.matching;
       }
 
-      if (needsOnboarding && location != AppRoutePaths.onboarding) {
-        return AppRoutePaths.onboarding;
+      if (needsOnboarding) {
+        if (!_isOnboardingRoute(location)) {
+          return onboardingTarget;
+        }
+        if (location == AppRoutePaths.onboarding &&
+            onboardingTarget != AppRoutePaths.onboarding) {
+          return onboardingTarget;
+        }
+        if (location != AppRoutePaths.onboarding &&
+            onboardingTarget == AppRoutePaths.onboarding) {
+          return AppRoutePaths.onboarding;
+        }
+      } else if (_isOnboardingRoute(location)) {
+        return AppRoutePaths.matching;
       }
 
       return null;
@@ -63,3 +76,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+bool _isOnboardingRoute(String location) => const {
+  AppRoutePaths.onboarding,
+  AppRoutePaths.questionnaireOne,
+  AppRoutePaths.questionnaireTwo,
+  AppRoutePaths.questionnaireThree,
+  AppRoutePaths.questionnaireFour,
+  AppRoutePaths.questionnaireFive,
+}.contains(location);
+
+String _onboardingTargetFor(user) {
+  if (user == null || user.isLegacyCompletedProfile) {
+    return AppRoutePaths.onboarding;
+  }
+  if (user.datingProfileComplete != true) {
+    return AppRoutePaths.onboarding;
+  }
+  if (user.requiredCompatibilityComplete == true) {
+    return AppRoutePaths.matching;
+  }
+  final step = user.onboardingStep;
+  if (step is String && _isOnboardingRoute(step)) {
+    return step;
+  }
+  return AppRoutePaths.questionnaireOne;
+}

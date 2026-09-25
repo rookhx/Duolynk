@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/config/compatibility_question_schema.dart';
+import '../../../../core/routing/app_route_paths.dart';
 import '../../data/onboarding_repository.dart';
 import '../../domain/questionnaire_two_state.dart';
 
@@ -100,6 +101,9 @@ class QuestionnaireTwoController extends AsyncNotifier<QuestionnaireTwoState> {
             totalSteps: questions.length,
             isComplete: current.isComplete,
           );
+      await ref
+          .read(onboardingRepositoryProvider)
+          .updateOnboardingStep(AppRoutePaths.questionnaireThree);
 
       state = AsyncData(current.copyWith(isSaving: false));
     } catch (error, stackTrace) {

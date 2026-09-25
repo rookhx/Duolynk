@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../core/routing/app_route_paths.dart';
 import '../../../../core/widgets/buttons/duo_button.dart';
 import '../../../../core/widgets/cards/duo_glass_card.dart';
 import '../../../../theme/app_colors.dart';
@@ -108,7 +110,7 @@ class QuestionnaireFourScreen extends ConsumerWidget {
                       ),
                     ),
                     DuoButton(
-                      label: 'Save Relationship Goals',
+                      label: 'Continue',
                       isLoading: questionnaire.isSaving,
                       onPressed: !questionnaire.isComplete
                           ? null
@@ -124,13 +126,7 @@ class QuestionnaireFourScreen extends ConsumerWidget {
                                 questionnaireFourControllerProvider,
                               );
                               if (context.mounted && !nextState.hasError) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Relationship goals saved to Firestore.',
-                                    ),
-                                  ),
-                                );
+                                context.go(AppRoutePaths.questionnaireFive);
                               }
                             },
                     ),
