@@ -1,3 +1,4 @@
+import '../../core/config/app_environment.dart';
 import '../../models/weekly_match_generation_result.dart';
 import '../firebase/firebase_auth_service.dart';
 import 'match_notification_service.dart';
@@ -22,7 +23,7 @@ class WeeklyMatchService {
 
   Future<WeeklyMatchGenerationResult> generateWeeklyMatchesIfNeeded() async {
     final userId = _authService.currentUserId;
-    if (userId == null) {
+    if (!AppEnvironment.firebaseEnabled || userId == null) {
       return const WeeklyMatchGenerationResult(
         generatedMatches: [],
         remainingQuota: 0,
@@ -91,7 +92,7 @@ class WeeklyMatchService {
 
   Future<void> queueDueIntroductionReminders() async {
     final userId = _authService.currentUserId;
-    if (userId == null) {
+    if (!AppEnvironment.firebaseEnabled || userId == null) {
       return;
     }
     final suggestions = await _matchingRepository.fetchCuratedSuggestions();

@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/app_environment.dart';
@@ -15,7 +15,6 @@ import '../../../models/chat_model.dart';
 import '../../../models/match_model.dart';
 import '../../../services/access/trusted_access_repository.dart';
 import '../../../services/analytics/analytics_event_service.dart';
-import '../../../services/chat/chat_notification_service.dart';
 import '../../../services/firebase/firebase_auth_service.dart';
 import '../../../services/firebase/firebase_storage_service.dart';
 import '../../../services/firebase/firestore_service.dart';
@@ -26,7 +25,6 @@ final chatRepositoryProvider = Provider<ChatRepository>(
     firestoreService: ref.watch(firestoreServiceProvider),
     authService: ref.watch(firebaseAuthServiceProvider),
     storageService: ref.watch(firebaseStorageServiceProvider),
-    notificationService: ref.watch(chatNotificationServiceProvider),
     trustedAccessRepository: ref.watch(trustedAccessRepositoryProvider),
   ),
 );
@@ -36,18 +34,15 @@ class ChatRepository {
     required FirestoreService firestoreService,
     required FirebaseAuthService authService,
     required FirebaseStorageService storageService,
-    required ChatNotificationService notificationService,
     required TrustedAccessRepository trustedAccessRepository,
   }) : _firestoreService = firestoreService,
        _authService = authService,
        _storageService = storageService,
-       _notificationService = notificationService,
        _trustedAccessRepository = trustedAccessRepository;
 
   final FirestoreService _firestoreService;
   final FirebaseAuthService _authService;
   final FirebaseStorageService _storageService;
-  final ChatNotificationService _notificationService;
   final TrustedAccessRepository _trustedAccessRepository;
 
   Future<List<ChatModel>> fetchChats() async {
@@ -145,8 +140,11 @@ class ChatRepository {
       return const Stream<List<ChatMatchCandidate>>.empty();
     }
 
+    // Rules only allow reading matches that list the user in participantIds,
+    // so an unfiltered listener on `matches` is rejected.
     return _firestoreService
         .collection(FirestorePaths.matches)
+        .where('participantIds', arrayContains: userId)
         .snapshots()
         .asyncMap((snapshot) async {
           final candidates = <ChatMatchCandidate>[];
@@ -156,16 +154,22 @@ class ChatRepository {
                 (match.isLegacyActiveMatch &&
                     match.userId == userId &&
                     match.status == MatchStatus.active) ||
-                (match.participantIds.contains(userId) &&
-                    match.isConversationEligible);
+                match.isConversationEligible;
             if (!isAvailable) {
               continue;
             }
-            final partner = await _fetchUser(match.partnerIdFor(userId));
-            if (partner == null) {
+            final AuthorizedProfile partner;
+            try {
+              partner = await _trustedAccessRepository.fetchAuthorizedProfile(
+                candidateUid: match.partnerIdFor(userId),
+              );
+            } catch (error) {
+              debugPrint('Could not load chat partner for ${match.id}: $error');
               continue;
             }
-            candidates.add(ChatMatchCandidate(match: match, partner: partner));
+            candidates.add(
+              ChatMatchCandidate(match: match, partner: partner.user),
+            );
           }
           return candidates;
         });
@@ -367,40 +371,13 @@ class ChatRepository {
       return;
     }
 
-    final snapshot = await _firestoreService
-        .collection(FirestorePaths.conversationMessages(chatId))
-        .orderBy('createdAt', descending: true)
-        .limit(40)
-        .get();
-
-    final batch = _firestoreService.batch();
-    var hasUpdates = false;
-    for (final doc in snapshot.docs) {
-      final message = ChatMessageModel.fromMap(doc.id, doc.data());
-      if (message.senderId == userId ||
-          message.readByUserIds.contains(userId)) {
-        continue;
-      }
-
-      batch.update(doc.reference, {
-        'readByUserIds': [...message.readByUserIds, userId],
-      });
-      hasUpdates = true;
-    }
-
-    final now = DateTime.now().toUtc();
-    batch.set(
-      _firestoreService.document(FirestorePaths.conversation(chatId)),
-      {
-        'lastReadAtByUser.$userId': Timestamp.fromDate(now),
-        'updatedAt': Timestamp.fromDate(now),
-      },
-      SetOptions(merge: true),
-    );
-
-    if (hasUpdates || snapshot.docs.isNotEmpty) {
-      await batch.commit();
-    }
+    // Messages are immutable under firestore.rules, so read state lives only
+    // in the conversation's lastReadAtByUser map. update() (not set+merge)
+    // makes the dotted key a nested path, and the rules require server time.
+    await _firestoreService.updateDocument(FirestorePaths.conversation(chatId), {
+      'lastReadAtByUser.$userId': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<void> setTyping(String chatId, {required bool isTyping}) async {
@@ -413,13 +390,12 @@ class ChatRepository {
       return;
     }
 
+    // firestore.rules require updatedAt == request.time, i.e. server time.
     final updates = <String, dynamic>{
-      'updatedAt': Timestamp.fromDate(DateTime.now().toUtc()),
+      'updatedAt': FieldValue.serverTimestamp(),
     };
     if (isTyping) {
-      updates['typingByUser.$userId'] = Timestamp.fromDate(
-        DateTime.now().toUtc(),
-      );
+      updates['typingByUser.$userId'] = FieldValue.serverTimestamp();
     } else {
       updates['typingByUser.$userId'] = FieldValue.delete();
     }
@@ -471,10 +447,6 @@ class ChatRepository {
     if (!senderHasConversationAccess) {
       throw StateError('Activate this conversation before sending messages.');
     }
-    final recipientHasConversationAccess = await _hasConversationActivation(
-      userId: recipientId,
-      conversation: conversation,
-    );
 
     final messageRef = messageIdOverride == null
         ? _firestoreService
@@ -501,7 +473,10 @@ class ChatRepository {
       ...message.toMap(),
       'createdAt': FieldValue.serverTimestamp(),
     });
-    batch.set(
+    // update() (not set+merge) so the dotted keys are nested field paths;
+    // set+merge would create literal "typingByUser.<uid>" fields, which the
+    // conversation metadata rule rejects along with the whole batch.
+    batch.update(
       _firestoreService.document(FirestorePaths.conversation(chatId)),
       {
         'lastMessage': preview,
@@ -512,27 +487,11 @@ class ChatRepository {
         'typingByUser.$senderId': FieldValue.delete(),
         'lastReadAtByUser.$senderId': FieldValue.serverTimestamp(),
       },
-      SetOptions(merge: true),
     );
     await batch.commit();
     await const AnalyticsEventService().track('first_message_sent');
-
-    final sender = conversation.participantFor(senderId);
-    if (sender != null) {
-      try {
-        await _notificationService.queueIncomingMessageNotification(
-          recipientUserId: recipientId,
-          conversation: conversation,
-          sender: sender,
-          message: message,
-          includeMessagePreview: recipientHasConversationAccess,
-        );
-      } catch (_) {
-        // Prompt 12 hardening makes notification jobs trusted-backend-owned.
-        // Message delivery should not be reported as failed solely because the
-        // client cannot enqueue a push job under production rules.
-      }
-    }
+    // Push notifications are sent by the onMessageCreated Cloud Function;
+    // notification jobs are server-owned under firestore.rules.
   }
 
   Future<ChatModel?> _fetchConversation(String chatId) async {

@@ -51,7 +51,14 @@ class DuoButton extends StatelessWidget {
               Icon(icon, size: 18),
               const SizedBox(width: AppSpacing.sm),
             ],
-            Text(label ?? ''),
+            // Shrinks the label instead of overflowing when the button is
+            // narrow (e.g. side-by-side Back / Complete Profile buttons).
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(label ?? '', maxLines: 1),
+              ),
+            ),
           ],
         );
 

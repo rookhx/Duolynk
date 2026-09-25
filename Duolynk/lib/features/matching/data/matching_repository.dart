@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/app_environment.dart';
@@ -106,21 +107,23 @@ class MatchingRepository {
       return const Stream<List<MatchModel>>.empty();
     }
 
-    return _firestoreService.collection(FirestorePaths.matches).snapshots().map(
-      (snapshot) {
-        return snapshot.docs
-            .map((doc) => MatchModel.fromMap(doc.id, doc.data()))
-            .where(
-              (match) =>
-                  (match.isLegacyActiveMatch &&
-                      match.userId == userId &&
-                      match.status == MatchStatus.active) ||
-                  (match.participantIds.contains(userId) &&
-                      match.isConversationEligible),
-            )
-            .toList();
-      },
-    );
+    // Rules only allow reading matches that list the user in participantIds.
+    return _firestoreService
+        .collection(FirestorePaths.matches)
+        .where('participantIds', arrayContains: userId)
+        .snapshots()
+        .map((snapshot) {
+          return snapshot.docs
+              .map((doc) => MatchModel.fromMap(doc.id, doc.data()))
+              .where(
+                (match) =>
+                    (match.isLegacyActiveMatch &&
+                        match.userId == userId &&
+                        match.status == MatchStatus.active) ||
+                    match.isConversationEligible,
+              )
+              .toList();
+        });
   }
 
   Stream<List<MatchModel>> watchSuggestedMatches() {
@@ -182,26 +185,24 @@ class MatchingRepository {
           : const [];
     }
 
-    final legacySnapshot = await _firestoreService
+    // firestore.rules only let a user read matches listing them in
+    // participantIds, so the query must filter on that field; a query on
+    // userId or suggestedForUserIds is rejected outright.
+    final snapshot = await _firestoreService
         .collection(FirestorePaths.matches)
-        .where('userId', isEqualTo: userId)
+        .where('participantIds', arrayContains: userId)
         .where('weekKey', isEqualTo: weekKey)
         .where('generatedBySystem', isEqualTo: true)
         .get();
 
-    final canonicalSnapshot = await _firestoreService
-        .collection(FirestorePaths.matches)
-        .where('suggestedForUserIds', arrayContains: userId)
-        .where('weekKey', isEqualTo: weekKey)
-        .where('generatedBySystem', isEqualTo: true)
-        .get();
-
-    return {
-      for (final doc in legacySnapshot.docs)
-        doc.id: MatchModel.fromMap(doc.id, doc.data()),
-      for (final doc in canonicalSnapshot.docs)
-        doc.id: MatchModel.fromMap(doc.id, doc.data()),
-    }.values.toList();
+    return snapshot.docs
+        .map((doc) => MatchModel.fromMap(doc.id, doc.data()))
+        .where(
+          (match) =>
+              match.userId == userId ||
+              match.suggestedForUserIds.contains(userId),
+        )
+        .toList();
   }
 
   Future<bool> canCurrentUserReceiveNewIntroductions() async {
@@ -529,16 +530,15 @@ class MatchingRepository {
           match.status == MatchStatus.archived) {
         continue;
       }
-      final partner = await _fetchUser(match.partnerIdFor(userId));
-      if (partner == null) {
+      final profile = await _fetchAuthorizedPartnerProfile(
+        match.partnerIdFor(userId),
+      );
+      if (profile == null) {
         continue;
       }
-      final interests = await _readInterestSelections(partner.id);
-      final relationshipGoals = await _readStringAnswers(
-        partner.id,
-        QuestionnaireIds.relationshipGoals,
-        keys: const ['marriage', 'longTermRelationship', 'casualDating'],
-      );
+      final partner = profile.user;
+      final interests = profile.interests;
+      final relationshipGoals = profile.relationshipGoals;
       final hasProfileUnlock = await _hasProfileUnlock(
         userId: userId,
         pairKey: match.pairKey ?? match.id,
@@ -568,6 +568,19 @@ class MatchingRepository {
       return b.match.compatibilityScore.compareTo(a.match.compatibilityScore);
     });
     return suggestions;
+  }
+
+  Future<AuthorizedProfile?> _fetchAuthorizedPartnerProfile(
+    String partnerId,
+  ) async {
+    try {
+      return await _trustedAccessRepository.fetchAuthorizedProfile(
+        candidateUid: partnerId,
+      );
+    } catch (error) {
+      debugPrint('getAuthorizedFullProfile($partnerId) failed: $error');
+      return null;
+    }
   }
 
   Future<bool> _hasProfileUnlock({

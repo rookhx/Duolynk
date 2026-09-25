@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/app_route_paths.dart';
+import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../../core/config/profile_prompt_library.dart';
 import '../../../../core/widgets/buttons/duo_button.dart';
 import '../../../../core/widgets/cards/duo_glass_card.dart';
@@ -24,6 +25,9 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
+  // Mirrors the bio rule in OnboardingState.canContinueCurrentStep.
+  static const _minBioLength = 20;
+
   final _nameController = TextEditingController();
   final _countryController = TextEditingController();
   final _cityController = TextEditingController();
@@ -121,7 +125,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         Expanded(
                           child: DuoButton(
                             label: state.currentStep == state.totalSteps
-                                ? 'Start Compatibility'
+                                ? 'Complete Profile'
                                 : 'Continue',
                             onPressed: () =>
                                 _handlePrimaryAction(state.currentStep),
@@ -266,11 +270,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               textCapitalization: TextCapitalization.sentences,
             ),
             const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Aim for at least 20 characters to give your future match real signal.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _bioController,
+              builder: (context, value, _) {
+                final length = value.text.trim().length;
+                return Text(
+                  length >= _minBioLength
+                      ? '$length characters. Looking good!'
+                      : 'Aim for at least $_minBioLength characters to give your future match real signal. ($length/$_minBioLength)',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                );
+              },
             ),
           ],
         );
@@ -314,7 +326,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         return;
       }
       if (success) {
-        context.go(AppRoutePaths.questionnaireOne);
+        // The session caches the user doc read at sign-in, which still says
+        // the profile is incomplete; the router would bounce us back here.
+        ref.invalidate(authSessionProvider);
+        await ref.read(authSessionProvider.future);
+        if (!mounted) {
+          return;
+        }
+        context.go(AppRoutePaths.matching);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -325,7 +344,46 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       return;
     }
 
-    await controller.continueStep();
+    final state = ref.read(onboardingControllerProvider).requireValue;
+    if (!state.canContinueCurrentStep) {
+      _showMessage(_incompleteStepMessage(currentStep));
+      return;
+    }
+
+    try {
+      await controller.continueStep();
+    } catch (error) {
+      debugPrint('Onboarding draft save failed: $error');
+      _showMessage('We could not save your progress. Please try again.');
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _incompleteStepMessage(int step) {
+    switch (step) {
+      case 1:
+        return 'Add your name and a date of birth showing you are 18 or older.';
+      case 2:
+        return 'Choose your gender and who you are interested in.';
+      case 3:
+        return 'Add your country and city.';
+      case 4:
+        return 'Add at least one photo to continue.';
+      case 5:
+        return 'Your bio needs at least $_minBioLength characters.';
+      case 6:
+        return 'Pick ${ProfilePromptLibrary.requiredPromptCount} different prompts and answer each one.';
+      default:
+        return 'Please complete this step to continue.';
+    }
   }
 
   void _syncTextControllers() {
@@ -381,7 +439,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       case 6:
         return 'Choose three prompts that help your match understand who you are.';
       default:
-        return 'Take one last look. Next, Duolynk will ask the compatibility questions that power your introductions.';
+        return 'Take one last look before we start delivering more thoughtful matches.';
     }
   }
 }
@@ -400,6 +458,15 @@ class _PromptStep extends ConsumerWidget {
     final visiblePrompts = prompts
         .take(ProfilePromptLibrary.requiredPromptCount)
         .toList();
+    // Prompts not already chosen in another slot, plus this slot's choice.
+    List<ProfilePromptDefinition> availablePrompts(int index) => ProfilePromptLibrary
+        .prompts
+        .where(
+          (prompt) =>
+              prompt.id == visiblePrompts[index].promptId ||
+              !visiblePrompts.any((answer) => answer.promptId == prompt.id),
+        )
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -410,18 +477,28 @@ class _PromptStep extends ConsumerWidget {
                 ? null
                 : visiblePrompts[index].promptId,
             decoration: InputDecoration(labelText: 'Prompt ${index + 1}'),
-            items: ProfilePromptLibrary.prompts
-                .where(
-                  (prompt) =>
-                      prompt.id == visiblePrompts[index].promptId ||
-                      !visiblePrompts.any(
-                        (answer) => answer.promptId == prompt.id,
-                      ),
+            // Prompt texts are long: fill the width, wrap in the menu, and
+            // ellipsize the selected value instead of overflowing.
+            isExpanded: true,
+            itemHeight: null,
+            selectedItemBuilder: (context) => availablePrompts(index)
+                .map(
+                  (prompt) => Text(
+                    prompt.text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 )
+                .toList(),
+            items: availablePrompts(index)
                 .map(
                   (prompt) => DropdownMenuItem<String>(
                     value: prompt.id,
-                    child: Text(prompt.text),
+                    child: Text(
+                      prompt.text,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 )
                 .toList(),

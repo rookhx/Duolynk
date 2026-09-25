@@ -6,7 +6,7 @@ class AppEnvironment {
 
   static const bool firebaseEnabled = bool.fromEnvironment(
     'FIREBASE_ENABLED',
-    defaultValue: false,
+    defaultValue: true,
   );
   static const bool revenueCatEnabled = bool.fromEnvironment(
     'REVENUECAT_ENABLED',

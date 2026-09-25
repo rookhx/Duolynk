@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "329361016322",
+    "project_id": "duolynk-1af9b",
+    "storage_bucket": "duolynk-1af9b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:329361016322:android:37656623376b6fc514091b",
+        "android_client_info": {
+          "package_name": "com.duolynk.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANVklXIhH_1THehqF0sRxhudRrQko1qUw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

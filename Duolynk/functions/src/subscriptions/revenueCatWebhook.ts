@@ -18,6 +18,7 @@ interface RevenueCatEvent {
 export const revenueCatWebhook = onRequest(
   {
     region: "us-central1",
+    invoker: "public",
     secrets: [revenueCatWebhookSecret],
   },
   async (req, res) => {

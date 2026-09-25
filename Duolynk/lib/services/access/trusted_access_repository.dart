@@ -1,15 +1,20 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../models/app_user.dart';
+
 final trustedAccessRepositoryProvider = Provider<TrustedAccessRepository>(
-  (ref) => TrustedAccessRepository(functions: FirebaseFunctions.instance),
+  (ref) => TrustedAccessRepository(),
 );
 
 class TrustedAccessRepository {
-  const TrustedAccessRepository({required FirebaseFunctions functions})
-    : _functions = functions;
+  TrustedAccessRepository({FirebaseFunctions? functions})
+    : _injectedFunctions = functions;
 
-  final FirebaseFunctions _functions;
+  // Resolved lazily so demo mode (no Firebase app) can build this repository.
+  final FirebaseFunctions? _injectedFunctions;
+  late final FirebaseFunctions _functions =
+      _injectedFunctions ?? FirebaseFunctions.instance;
 
   Future<TrustedAccessResult> unlockCandidateProfile({
     required String candidateUid,
@@ -39,6 +44,33 @@ class TrustedAccessRepository {
       'candidateUid': candidateUid,
     });
     return result.data;
+  }
+
+  /// Another user's `users` doc and questionnaires are owner-only in
+  /// firestore.rules, so partners are loaded through getAuthorizedFullProfile:
+  /// the full profile when the caller may see it, teaser fields otherwise.
+  Future<AuthorizedProfile> fetchAuthorizedProfile({
+    required String candidateUid,
+  }) async {
+    final data = await fetchAuthorizedFullProfile(candidateUid: candidateUid);
+    final relationshipGoals = <String, String>{
+      for (final entry in (data['relationshipGoals'] as Map? ?? const {})
+          .entries)
+        if (entry.key is String && entry.value is String)
+          entry.key as String: entry.value as String,
+    };
+    final interests = (data['interests'] as List<dynamic>? ?? const [])
+        .whereType<String>()
+        .toList();
+    final profileFields = Map<String, dynamic>.from(data)
+      ..remove('interests')
+      ..remove('relationshipGoals');
+    return AuthorizedProfile(
+      user: AppUser.fromMap(candidateUid, profileFields),
+      isLocked: data['locked'] == true,
+      interests: interests,
+      relationshipGoals: relationshipGoals,
+    );
   }
 
   Future<TrustedAccessResult> createCuratedIntroduction({
@@ -94,6 +126,23 @@ class TrustedAccessRepository {
     });
     return result.data['conversationId'] as String? ?? '';
   }
+}
+
+class AuthorizedProfile {
+  const AuthorizedProfile({
+    required this.user,
+    required this.isLocked,
+    this.interests = const [],
+    this.relationshipGoals = const {},
+  });
+
+  final AppUser user;
+
+  /// True when only teaser fields (location, verification, relationship
+  /// goals) were returned.
+  final bool isLocked;
+  final List<String> interests;
+  final Map<String, String> relationshipGoals;
 }
 
 class TrustedAccessResult {

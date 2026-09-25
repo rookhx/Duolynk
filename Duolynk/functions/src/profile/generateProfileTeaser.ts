@@ -3,7 +3,8 @@ import sharp from "sharp";
 import {storage} from "../shared/firestore";
 
 export const generateProfileTeaser = onObjectFinalized(
-  {region: "us-central1", memory: "512MiB"},
+  // Storage triggers must run in the bucket's region (us-east1).
+  {region: "us-east1", memory: "512MiB"},
   async (event) => {
     const object = event.data;
     const path = object.name;

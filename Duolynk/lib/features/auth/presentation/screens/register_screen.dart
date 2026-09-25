@@ -196,8 +196,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   void _showAuthErrorIfNeeded() {
+    if (!mounted) {
+      return;
+    }
     final state = ref.read(authActionControllerProvider);
-    if (!mounted || !state.hasError) {
+    if (!state.hasError) {
       return;
     }
     final message = _friendlyMessage(state.error);

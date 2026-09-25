@@ -33,10 +33,13 @@ class MatchScreen extends ConsumerWidget {
 
     return state.when(
       loading: () => const _MatchLoadingView(),
-      error: (error, stackTrace) => _MatchErrorView(
-        onRetry: () =>
-            ref.read(weeklyMatchControllerProvider.notifier).refresh(),
-      ),
+      error: (error, stackTrace) {
+        debugPrint('Weekly match failed to load: $error\n$stackTrace');
+        return _MatchErrorView(
+          onRetry: () =>
+              ref.read(weeklyMatchControllerProvider.notifier).refresh(),
+        );
+      },
       data: (data) => data.recommendations.isEmpty
           ? _EmptyMatchView(
               onRefresh: () =>

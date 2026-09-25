@@ -2,9 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class FirestoreService {
   FirestoreService({FirebaseFirestore? firestore})
-    : _firestore = firestore ?? FirebaseFirestore.instance;
+    : _injectedFirestore = firestore;
 
-  final FirebaseFirestore _firestore;
+  // Resolved lazily so constructing the service never touches Firebase in demo
+  // mode (FIREBASE_ENABLED=false), where no Firebase app is initialized.
+  final FirebaseFirestore? _injectedFirestore;
+  late final FirebaseFirestore _firestore =
+      _injectedFirestore ?? FirebaseFirestore.instance;
 
   CollectionReference<Map<String, dynamic>> collection(String path) {
     return _firestore.collection(path);
